@@ -48,6 +48,9 @@
 #include "gammatable.h"
 #include "dss_features.h"
 #include "dispc.h"
+#ifdef CONFIG_OMAP2_DSS_GAMMA_CONTROL
+#include "gammatable.h"
+#endif
 
 /* DISPC */
 #define DISPC_SZ_REGS			SZ_4K
@@ -2795,6 +2798,7 @@ bool dispc_trans_key_enabled(enum omap_channel ch)
 	return enabled;
 }
 
+#ifdef CONFIG_OMAP2_DSS_GAMMA_CONTROL
 /* valid inputs for gamma are from 1 to 10 that map
   from 0.2 to 2.2 gamma values and 0 for disabled */
 int dispc_enable_gamma(enum omap_channel ch, u8 gamma)
@@ -2841,7 +2845,7 @@ int dispc_enable_gamma(enum omap_channel ch, u8 gamma)
 #endif
 	return 0;
 }
-
+#endif
 
 void dispc_set_tft_data_lines(enum omap_channel channel, u8 data_lines)
 {
