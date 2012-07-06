@@ -604,4 +604,10 @@ config SOUND_CONTROL
 	help
 	  Enable support for Sound Control
 
+config COLOR_CONTROL
+	bool "Support for Color Control"
+	default y
+	help
+	  Say Y here to enable Color Control
+
 endif # MISC_DEVICES
