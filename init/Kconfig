@@ -130,13 +130,10 @@ config HAVE_KERNEL_XZ
 config HAVE_KERNEL_LZO
 	bool
 
-config HAVE_KERNEL_LZ4
-	bool
-
 choice
 	prompt "Kernel compression mode"
 	default KERNEL_GZIP
-	depends on HAVE_KERNEL_GZIP || HAVE_KERNEL_BZIP2 || HAVE_KERNEL_LZMA || HAVE_KERNEL_XZ || HAVE_KERNEL_LZO || HAVE_KERNEL_LZ4
+	depends on HAVE_KERNEL_GZIP || HAVE_KERNEL_BZIP2 || HAVE_KERNEL_LZMA || HAVE_KERNEL_XZ || HAVE_KERNEL_LZO
 	help
 	  The linux kernel is a kind of self-extracting executable.
 	  Several compression algorithms are available, which differ
@@ -203,14 +200,6 @@ config KERNEL_LZO
 	  Its compression ratio is the poorest among the 4. The kernel
 	  size is about 10% bigger than gzip; however its speed
 	  (both compression and decompression) is the fastest.
-
-config KERNEL_LZ4
-	bool "LZ4"
-	depends on HAVE_KERNEL_LZ4
-	help
-	  Its compression ratio is worse than LZO. The size of the kernel
-	  is about 8% bigger than LZO. But the decompression speed is
-	  faster than LZO.
 
 endchoice
 
@@ -410,6 +399,24 @@ config TREE_PREEMPT_RCU
 	  is also required.  It also scales down nicely to
 	  smaller systems.
 
+config JRCU
+       bool "An RCU suitable for small SMP systems"
+       depends on PREEMPT
+       depends on SMP
+       select PREEMPT_COUNT_CPU
+       help
+         This option selects a minimal-footprint RCU that is most suitable
+         for small SMP systems  -- 'small' in this case meaning all but
+         the largest NUMA systems.  It is not clear how big 'small' can
+         be, but it is known to work well on NUMA platforms having 80 CPUs.
+
+         jRCU may also be a good choice for systems with low latency
+         requirements.  It does RCU garbage collection from a single
+         CPU rather than have each CPU do its own.  This frees up all
+         but one CPU from interference by this periodic requirement.
+
+         Most users should say N here.
+
 config TINY_RCU
 	bool "UP-only small-memory-footprint RCU"
 	depends on !SMP
@@ -434,6 +441,57 @@ config PREEMPT_RCU
 	help
 	  This option enables preemptible-RCU code that is common between
 	  the TREE_PREEMPT_RCU and TINY_PREEMPT_RCU implementations.
+
+config JRCU_DAEMON
+       bool
+       depends on JRCU
+       default y
+       help
+         Required. The context switch when leaving the daemon is needed
+         to get the CPU to reliably participate in end-of-batch processing.
+
+config JRCU_DAEMON_PRIO
+       int "JRCU Daemon priority"
+       depends on JRCU_DAEMON
+       default 0
+       help
+         The JRCU daemon priority. If 0 then the daemon runs SCHED_OTHER.
+         If >0 then the daemon runs SCHED_RR and its priority will be
+         the value selected.  If <0 then SCHED_RR is again selected,
+         but now its priority will be the biased downwards from the
+         maximum possible Posix priority.
+
+         If unsure, select 0.  The other values are useful only for those
+         rare setups where 100% of every CPU's utilization will be spent in
+         user SCHED_RR or SCHED_FIFO applications, for long periods of time.
+
+
+config JRCU_LAZY
+       bool "Should JRCU be lazy recognizing end-of-batch"
+       depends on JRCU
+       default n
+       help
+         If you say Y here, JRCU will on occasion fail to recognize
+         end-of-batch for an rcu period or two.
+
+         If you say N here, JRCU will be more aggressive; in fact it
+         will always recognize end-of-batch at the earliest possible time.
+
+         Being lazy should be fractionally more efficient in that JRCU
+         inserts fewer memory barriers along some high performance kernel
+         code paths.
+
+         If unsure, say N.
+
+config PREEMPT_COUNT_CPU
+       # bool "Let one CPU look at another CPUs preemption count"
+       bool
+       default n
+       help
+         If Y then the preempt_count_cpu() function will be compiled into
+         the kernel.  Its existance impacts kernel performance slightly,
+         so this option should be selected only if other kernel features
+         that use preempt_count_cpu() are also selected.
 
 config RCU_TRACE
 	bool "Enable tracing for RCU"
@@ -613,25 +671,6 @@ config CGROUP_FREEZER
 	help
 	  Provides a way to freeze and unfreeze all tasks in a
 	  cgroup.
-
-config CGROUP_TIMER_SLACK
-	bool "Timer slack cgroup controller"
-	help
-	  Provides a way to set minimal timer slack value for tasks in
-	  a cgroup.
-	  It's useful in mobile devices where certain background apps
-	  are attached to a cgroup and combined wakeups are desired.
-
-config CGROUP_DYNAMIC_TIMER_SLACK
-	bool "Dynamic management of the minimal timer slack value during suspend/resume"
-	depends on CGROUP_TIMER_SLACK && HAS_EARLYSUSPEND
-	default n
-	help
-	  This feature allows to use different minimal timer slack value
-	  for the timer slack controller when the system is suspended and
-	  when the system has been resumed.
-
-	  If unsure, say N to disable this feature
 
 config CGROUP_DEVICE
 	bool "Device controller for cgroups"
@@ -931,13 +970,26 @@ source "usr/Kconfig"
 
 endif
 
-config CC_OPTIMIZE_FOR_SIZE
-	bool "Optimize for size"
-	help
-	  Enabling this option will pass "-Os" instead of "-O2" to gcc
-	  resulting in a smaller kernel.
+choice
+ prompt "Optimization Level"
+  default CC_OPTIMIZE_DEFAULT
 
-	  If unsure, say Y.
+config CC_OPTIMIZE_FOR_SIZE
+ bool "Optimize for Size"
+ bool "Use -Os"
+ help
+  Enabling this option will pass "-Os" instead of "-O2" to gcc
+  resulting in a smaller kernel.
+
+config CC_OPTIMIZE_DEFAULT
+ bool "Optimize Default Level"
+ bool "Use -O2"
+
+config CC_OPTIMIZE_O3
+ bool "Optimize Linaro Max Level"
+ bool "Use -O3"
+
+endchoice
 
 config SYSCTL
 	bool
@@ -1310,15 +1362,6 @@ config PROFILING
 	help
 	  Say Y here to enable the extended profiling support mechanisms used
 	  by profilers such as OProfile.
-
-config BOOTTIME
-	bool "Boot time measurments"
-	default n
-	help
-		Adds sysfs entries (boottime/) with start-up timing information.
-		If CONFIG_DEBUG_FS is enabled, detailed information about the
-		boot time, including system load during boot can be extraced.
-		This information can be visualised with help of the bootgraph script.
 
 #
 # Place an empty function call at each tracepoint site. Can be

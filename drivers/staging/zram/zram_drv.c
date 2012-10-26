@@ -29,14 +29,49 @@
 #include <linux/genhd.h>
 #include <linux/highmem.h>
 #include <linux/slab.h>
+<<<<<<< HEAD
 #include <linux/crypto.h>
 #include <linux/cpu.h>
+=======
+>>>>>>> 1dfbf84... Implemented Google's snappy compression / decompression
 #include <linux/string.h>
 #include <linux/vmalloc.h>
 
 #include "zram_drv.h"
 
+<<<<<<< HEAD
 #define ZRAM_COMPRESSOR_DEFAULT "lz4"
+=======
+#include "../snappy/csnappy.h" /* if built in drivers/staging */
+#define WMSIZE_ORDER	((PAGE_SHIFT > 14) ? (15) : (PAGE_SHIFT+1))
+#define WMSIZE		(1 << WMSIZE_ORDER)
+
+static int
+snappy_compress_(
+	const unsigned char *src,
+	size_t src_len,
+	unsigned char *dst,
+	size_t *dst_len,
+	void *workmem)
+{
+	const unsigned char *end = csnappy_compress_fragment(
+		src, (uint32_t)src_len, dst, workmem, WMSIZE_ORDER);
+	*dst_len = end - dst;
+	return 0;
+}
+static int
+snappy_decompress_(
+	const unsigned char *src,
+	size_t src_len,
+	unsigned char *dst,
+	size_t *dst_len)
+{
+	uint32_t dst_len_ = (uint32_t)*dst_len;
+	int ret = csnappy_decompress_noheader(src, src_len, dst, &dst_len_);
+	*dst_len = (size_t)dst_len_;
+	return ret;
+}
+>>>>>>> 1dfbf84... Implemented Google's snappy compression / decompression
 
 /* Globals */
 static int zram_major;
@@ -399,6 +434,7 @@ out_cleanup:
 	return ret;
 }
 
+<<<<<<< HEAD
 static int zram_bvec_write(struct zram *zram, struct bio_vec *bvec, u32 index,
 			   int offset)
 {
@@ -407,10 +443,17 @@ static int zram_bvec_write(struct zram *zram, struct bio_vec *bvec, u32 index,
 	unsigned long handle;
 	struct page *page;
 	unsigned char *user_mem, *cmem, *src, *uncmem = NULL;
+=======
+		ret = snappy_decompress_(
+			cmem + sizeof(*zheader),
+			xv_get_object_size(cmem) - sizeof(*zheader),
+			user_mem, &clen);
+>>>>>>> 1dfbf84... Implemented Google's snappy compression / decompression
 
 	page = bvec->bv_page;
 	src = zram->compress_buffer;
 
+<<<<<<< HEAD
 	if (is_partial_io(bvec)) {
 		/*
 		 * This is a partial IO. We need to read the full page
@@ -420,6 +463,13 @@ static int zram_bvec_write(struct zram *zram, struct bio_vec *bvec, u32 index,
 		if (!uncmem) {
 			pr_info("Error allocating temp memory!\n");
 			ret = -ENOMEM;
+=======
+		/* Should NEVER happen. Return bio error if it does. */
+		if (unlikely(ret)) {
+			pr_err("Decompression failed! err=%d, page=%u\n",
+				ret, index);
+			zram_stat64_inc(zram, &zram->stats.failed_reads);
+>>>>>>> 1dfbf84... Implemented Google's snappy compression / decompression
 			goto out;
 		}
 		ret = zram_decompress_page(zram, uncmem, index);
@@ -492,16 +542,30 @@ static int zram_bvec_write(struct zram *zram, struct bio_vec *bvec, u32 index,
 	if ((clen == PAGE_SIZE) && !is_partial_io(bvec))
 		kunmap_atomic(src);
 
+<<<<<<< HEAD
 	zs_unmap_object(zram->mem_pool, handle);
+=======
+		ret = snappy_compress_(user_mem, PAGE_SIZE, src, &clen,
+					zram->compress_workmem);
+>>>>>>> 1dfbf84... Implemented Google's snappy compression / decompression
 
 	zram->table[index].handle = handle;
 	zram->table[index].size = clen;
 
+<<<<<<< HEAD
 	/* Update stats */
 	zram_stat64_add(zram, &zram->stats.compr_size, clen);
 	zram_stat_inc(&zram->stats.pages_stored);
 	if (clen <= PAGE_SIZE / 2)
 		zram_stat_inc(&zram->stats.good_compress);
+=======
+		if (unlikely(ret)) {
+			mutex_unlock(&zram->lock);
+			pr_err("Compression failed! err=%d\n", ret);
+			zram_stat64_inc(zram, &zram->stats.failed_writes);
+			goto out;
+		}
+>>>>>>> 1dfbf84... Implemented Google's snappy compression / decompression
 
 out:
 	if (is_partial_io(bvec))
@@ -686,6 +750,7 @@ int zram_init_device(struct zram *zram)
 	int ret;
 	size_t num_pages;
 
+<<<<<<< HEAD
 	if (zram->disksize > 2 * (totalram_pages << PAGE_SHIFT)) {
 		pr_info(
 		"There is little point creating a zram of greater than "
@@ -698,6 +763,22 @@ int zram_init_device(struct zram *zram)
 		"Continuing anyway ...\n",
 		(totalram_pages << PAGE_SHIFT) >> 10, zram->disksize >> 10
 		);
+=======
+	mutex_lock(&zram->init_lock);
+
+	if (zram->init_done) {
+		mutex_unlock(&zram->init_lock);
+		return 0;
+	}
+
+	zram_set_disksize(zram, totalram_pages << PAGE_SHIFT);
+
+	zram->compress_workmem = kzalloc(WMSIZE, GFP_KERNEL);
+	if (!zram->compress_workmem) {
+		pr_err("Error allocating compressor working memory!\n");
+		ret = -ENOMEM;
+		goto fail;
+>>>>>>> 1dfbf84... Implemented Google's snappy compression / decompression
 	}
 
 	zram->compress_buffer =
