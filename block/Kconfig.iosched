@@ -105,6 +105,14 @@ choice
 	config DEFAULT_SIO
 		bool "SIO" if IOSCHED_SIO=y
 
+config IOSCHED_FIOPS
+	tristate "IOPS based I/O scheduler"
+	default y
+	---help---
+	  This is an IOPS based I/O scheduler. It will try to distribute
+          IOPS equally among all processes in the system. It's mainly for
+          Flash based storage.
+
 	config DEFAULT_ROW
 		bool "ROW" if IOSCHED_ROW=y
 		help
@@ -126,6 +134,12 @@ choice
 	
 	config DEFAULT_VR
 		bool "V(R)" if IOSCHED_VR=y
+        
+	config DEFAULT_FIFO
+		bool "fifo"
+
+	config DEFAULT_FIOPS
+		bool "fiops"
 
 endchoice
 
@@ -140,6 +154,7 @@ config DEFAULT_IOSCHED
 	default "vr" if DEFAULT_VR
 	default "noop" if DEFAULT_NOOP
 	default "bfq" if DEFAULT_BFQ
+	default "fifo" if DEFAULT_FIFO
 
 endmenu
 
