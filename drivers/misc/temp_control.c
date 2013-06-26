@@ -12,7 +12,9 @@
 #include <linux/miscdevice.h>
 
 #define TEMPCONTROL_VERSION 1
-
+#define DEF_TEMPLIMIT 70000
+#define TEMP_FLOOR 50000
+#define TEMP_CEILING 90000
 #define MIN_TEMPLIMIT 50000
 #define MAX_TEMPLIMIT 90000
 
