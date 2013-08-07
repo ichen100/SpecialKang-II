@@ -1,6 +1,7 @@
 /*
  * Author: Paul Reioux aka Faux123 <reioux@gmail.com>
  *
+ * Copyright 2013 Paul Reioux
  * Copyright 2012 Paul Reioux
  *
  * This software is licensed under the terms of the GNU General Public
@@ -23,27 +24,26 @@
 #include <linux/reboot.h>
 #include <linux/writeback.h>
 
-<<<<<<< HEAD
-#define DYN_FSYNC_VERSION 1
-=======
 #define DYN_FSYNC_VERSION_MAJOR 1
 #define DYN_FSYNC_VERSION_MINOR 2
->>>>>>> 744f017... dynamic fsync: add reboot notifier to force flush outstanding data
 
 /*
- * fsync_mutex protects dyn_fsync_active during early suspend / lat resume transitions
+ * fsync_mutex protects dyn_fsync_active during early suspend / late resume
+ * transitions
  */
 static DEFINE_MUTEX(fsync_mutex);
 
 bool early_suspend_active __read_mostly = false;
-bool dyn_fsync_active __read_mostly = false;
+bool dyn_fsync_active __read_mostly = true;
 
-static ssize_t dyn_fsync_active_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+static ssize_t dyn_fsync_active_show(struct kobject *kobj,
+		struct kobj_attribute *attr, char *buf)
 {
 	return sprintf(buf, "%u\n", (dyn_fsync_active ? 1 : 0));
 }
 
-static ssize_t dyn_fsync_active_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+static ssize_t dyn_fsync_active_store(struct kobject *kobj,
+		struct kobj_attribute *attr, const char *buf, size_t count)
 {
 	unsigned int data;
 
@@ -64,24 +64,30 @@ static ssize_t dyn_fsync_active_store(struct kobject *kobj, struct kobj_attribut
 	return count;
 }
 
-static ssize_t dyn_fsync_version_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+static ssize_t dyn_fsync_version_show(struct kobject *kobj,
+		struct kobj_attribute *attr, char *buf)
 {
-	return sprintf(buf, "version: %u\n", DYN_FSYNC_VERSION);
+	return sprintf(buf, "version: %u.%u by faux123\n",
+		DYN_FSYNC_VERSION_MAJOR,
+		DYN_FSYNC_VERSION_MINOR);
 }
 
-static ssize_t dyn_fsync_earlysuspend_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+static ssize_t dyn_fsync_earlysuspend_show(struct kobject *kobj,
+		struct kobj_attribute *attr, char *buf)
 {
 	return sprintf(buf, "early suspend active: %u\n", early_suspend_active);
 }
 
 static struct kobj_attribute dyn_fsync_active_attribute = 
-	__ATTR(Dyn_fsync_active, 0666, dyn_fsync_active_show, dyn_fsync_active_store);
+	__ATTR(Dyn_fsync_active, 0666,
+		dyn_fsync_active_show,
+		dyn_fsync_active_store);
 
 static struct kobj_attribute dyn_fsync_version_attribute = 
-	__ATTR(Dyn_fsync_version, 0444 , dyn_fsync_version_show, NULL);
+	__ATTR(Dyn_fsync_version, 0444, dyn_fsync_version_show, NULL);
 
 static struct kobj_attribute dyn_fsync_earlysuspend_attribute = 
-	__ATTR(Dyn_fsync_earlysuspend, 0444 , dyn_fsync_earlysuspend_show, NULL);
+	__ATTR(Dyn_fsync_earlysuspend, 0444, dyn_fsync_earlysuspend_show, NULL);
 
 static struct attribute *dyn_fsync_active_attrs[] =
 	{
@@ -101,7 +107,7 @@ static struct kobject *dyn_fsync_kobj;
 static void dyn_fsync_force_flush(void)
 {
 	/* flush all outstanding buffers */
-	wakeup_flusher_threads(0, WB_REASON_SYNC);
+	wakeup_flusher_threads(0);
 	sync_filesystems(0);
 	sync_filesystems(1);
 }
@@ -111,16 +117,7 @@ static void dyn_fsync_early_suspend(struct early_suspend *h)
 	mutex_lock(&fsync_mutex);
 	if (dyn_fsync_active) {
 		early_suspend_active = true;
-<<<<<<< HEAD
-#if 1
-		/* flush all outstanding buffers */
-		wakeup_flusher_threads(0);
-		sync_filesystems(0);
-		sync_filesystems(1);
-#endif
-=======
 		dyn_fsync_force_flush();
->>>>>>> 744f017... dynamic fsync: add reboot notifier to force flush outstanding data
 	}
 	mutex_unlock(&fsync_mutex);
 }
@@ -184,7 +181,8 @@ static int dyn_fsync_init(void)
 		return -ENOMEM;
         }
 
-	sysfs_result = sysfs_create_group(dyn_fsync_kobj, &dyn_fsync_active_attr_group);
+	sysfs_result = sysfs_create_group(dyn_fsync_kobj,
+			&dyn_fsync_active_attr_group);
 
         if (sysfs_result) {
 		pr_info("%s dyn_fsync sysfs create failed!\n", __FUNCTION__);
