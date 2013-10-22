@@ -506,27 +506,6 @@ static struct freq_attr gpu_oc = {
 };
 
 #if defined(CONFIG_OMAP_SCALING_FREQS) || defined(CONFIG_OMAP_SCREENOFF_MAXFREQ)
-
-#ifdef CONFIG_CUSTOM_VOLTAGE
-static ssize_t show_UV_mV_table(struct cpufreq_policy * policy, char * buf)
-{
-    return customvoltage_mpuvolt_read(NULL, NULL, buf);
-}
-
-static ssize_t store_UV_mV_table(struct cpufreq_policy * policy, const char * buf, size_t count)
-{
-    return customvoltage_mpuvolt_write(NULL, NULL, buf, count);
-}
-
-static struct freq_attr omap_UV_mV_table = {
-    .attr = {.name = "UV_mV_table",
-	     .mode=0644,
-    },
-    .show = show_UV_mV_table,
-    .store = store_UV_mV_table,
-};
-#endif
-
 static struct freq_attr *omap_cpufreq_attr[] = {
 #endif
 #ifdef CONFIG_OMAP_SCALING_FREQS
