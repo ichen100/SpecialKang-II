@@ -62,9 +62,9 @@ struct sr_class1p5_work_data {
 	u8 num_osc_samples;
 	unsigned long u_volt_samples[SR1P5_STABLE_SAMPLES];
 	bool work_active;
+};
 extern bool enable_highvolt_sr; 
 
-};
 
 #if CONFIG_OMAP_SR_CLASS1P5_RECALIBRATION_DELAY
 /* recal_work:	recalibration calibration work */
@@ -421,7 +421,7 @@ static int sr_class1p5_enable(struct voltagedomain *voltdm,
 
   // SR1.5 does not seem to calibrate high freqs properly - this is a
         // workaround until I find a better way
-   if (!enable_highvolt_sr && volt_data->volt_nominal > 1310000) {
+   if (!enable_highvolt_sr && volt_data->volt_nominal > 1310000) { 
     pr_info("[vanir_info] nominal@%d, skipping sr_enable\n", 
       volt_data->volt_nominal);
     volt_data->volt_calibrated = volt_data->volt_nominal;
