@@ -86,3 +86,4 @@ extern void __init l2x0_init(void __iomem *base, __u32 aux_val, __u32 aux_mask);
 #endif
 
 #endif
+
