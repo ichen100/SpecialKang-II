@@ -1,0 +1,49 @@
+diff --git a/arch/arm/boot/compressed/Makefile b/arch/arm/boot/compressed/Makefile
+index 5cad8a6..dfe5687 100644
+--- a/arch/arm/boot/compressed/Makefile
++++ b/arch/arm/boot/compressed/Makefile
+@@ -121,7 +121,7 @@ KBUILD_CFLAGS = $(subst -pg, , $(ORIG_CFLAGS))
+ endif
+
+ ccflags-y := -fpic -fno-builtin -I$(obj)
+-asflags-y := -Wa,-march=all -DZIMAGE
++asflags-y := -DZIMAGE
+
+ # Supply kernel BSS size to the decompressor via a linker symbol.
+ KBSS_SZ = $(shell $(CROSS_COMPILE)size $(obj)/../../../../vmlinux | \
+diff --git a/arch/arm/boot/compressed/head-sa1100.S b/arch/arm/boot/compressed/head-sa1100.S
+index 6179d94..3115e31 100644
+--- a/arch/arm/boot/compressed/head-sa1100.S
++++ b/arch/arm/boot/compressed/head-sa1100.S
+@@ -11,6 +11,7 @@
+ #include <asm/mach-types.h>
+
+  .section        ".start", "ax"
++ .arch armv4
+
+ __SA1100_start:
+
+diff --git a/arch/arm/boot/compressed/head-shark.S b/arch/arm/boot/compressed/head-shark.S
+index 089c560..92b5689 100644
+--- a/arch/arm/boot/compressed/head-shark.S
++++ b/arch/arm/boot/compressed/head-shark.S
+@@ -18,6 +18,7 @@
+
+  .section ".start", "ax"
+
++ .arch armv4
+  b __beginning
+
+ __ofw_data: .long 0 @ the number of memory blocks
+diff --git a/arch/arm/boot/compressed/head.S b/arch/arm/boot/compressed/head.S
+index fe4d9c3..6938559 100644
+--- a/arch/arm/boot/compressed/head.S
++++ b/arch/arm/boot/compressed/head.S
+@@ -11,6 +11,7 @@
+ #include <linux/linkage.h>
+ #include <asm/assembler.h>
+
++ .arch armv7-a
+ /*
+  * Debugging stuff
+  * 
