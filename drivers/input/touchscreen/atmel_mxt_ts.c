@@ -22,7 +22,7 @@
 #include <linux/slab.h>
 
 // Touch Boost Control
-//#include <linux/touch_boost_control.h> 
+#include <linux/touch_boost_control.h> 
 
 /* Version */
 #define MXT_VER_20		20
