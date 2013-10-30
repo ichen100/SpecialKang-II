@@ -18,6 +18,8 @@
 #include <linux/bio.h>
 #include <linux/swapops.h>
 #include <linux/writeback.h>
+#include <linux/frontswap.h>
+#include <linux/blkdev.h>
 #include <asm/pgtable.h>
 
 static struct bio *get_swap_bio(gfp_t gfp_flags,
@@ -79,8 +81,30 @@ void end_swap_bio_read(struct bio *bio, int err)
 				iminor(bio->bi_bdev->bd_inode),
 				(unsigned long long)bio->bi_sector);
 	} else {
+		/*
+		 * There is no reason to keep both uncompressed data and
+		 * compressed data in memory.
+		 */
+		struct swap_info_struct *sis;
+
 		SetPageUptodate(page);
-	}
+		sis = page_swap_info(page);
+		if (sis->flags & SWP_BLKDEV) {
+			struct gendisk *disk = sis->bdev->bd_disk;
+			if (disk->fops->swap_slot_free_notify) {
+				swp_entry_t entry;
+				unsigned long offset;
+
+				entry.val = page_private(page);
+				offset = swp_offset(entry);
+
+				SetPageDirty(page);
+				disk->fops->swap_slot_free_notify(sis->bdev,
+						offset);
+			}
+		}
+ 	}
+
 	unlock_page(page);
 	bio_put(bio);
 }
@@ -96,6 +120,12 @@ int swap_writepage(struct page *page, struct writeback_control *wbc)
 
 	if (try_to_free_swap(page)) {
 		unlock_page(page);
+		goto out;
+	}
+	if (frontswap_put_page(page) == 0) {
+		set_page_writeback(page);
+		unlock_page(page);
+		end_page_writeback(page);
 		goto out;
 	}
 	bio = get_swap_bio(GFP_NOIO, page, end_swap_bio_write);
@@ -122,6 +152,11 @@ int swap_readpage(struct page *page)
 
 	VM_BUG_ON(!PageLocked(page));
 	VM_BUG_ON(PageUptodate(page));
+	if (frontswap_get_page(page) == 0) {
+		SetPageUptodate(page);
+		unlock_page(page);
+		goto out;
+	}
 	bio = get_swap_bio(GFP_KERNEL, page, end_swap_bio_read);
 	if (bio == NULL) {
 		unlock_page(page);

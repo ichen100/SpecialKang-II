@@ -131,7 +131,6 @@ static const char const *omap4_tuna_hw_name_toro[] = {
 	[0x06] = "Toro 8th Sample",
 	[0x08] = "Toro 8th Sample",
 	[0x09] = "Toro 8-1th Sample",
-	[0x0e] = "Toro Plus 1st Sample",
 };
 
 int omap4_tuna_get_revision(void)
@@ -286,7 +285,11 @@ static struct platform_device tuna_gpio_i2c5_device = {
 #define PHYS_ADDR_SMC_SIZE			(SZ_1M * 3)
 #define PHYS_ADDR_DUCATI_SIZE			(SZ_1M * 105)
 #define OMAP_TUNA_ION_HEAP_SECURE_INPUT_SIZE	(SZ_1M * 90)
+#ifdef CONFIG_TUNA_BIGMEM
+#define OMAP_TUNA_ION_HEAP_TILER_SIZE    (SZ_1M * 31)
+#else
 #define OMAP_TUNA_ION_HEAP_TILER_SIZE		(SZ_1M * 81)
+#endif
 #define OMAP_TUNA_ION_HEAP_NONSECURE_TILER_SIZE	(SZ_1M * 15)
 
 #define PHYS_ADDR_SMC_MEM	(0x80000000 + SZ_1G - PHYS_ADDR_SMC_SIZE)
@@ -502,6 +505,9 @@ static struct regulator_init_data tuna_vaux1 = {
 		.valid_modes_mask	= REGULATOR_MODE_NORMAL
 					| REGULATOR_MODE_STANDBY,
 		.valid_ops_mask	 =	REGULATOR_CHANGE_MODE
+#ifdef CONFIG_OMAP_REGULATOR_VOLTCHANGE
+					| REGULATOR_CHANGE_VOLTAGE
+#endif
 					| REGULATOR_CHANGE_STATUS,
 		.always_on		= true,
 	},
@@ -590,6 +596,9 @@ static struct regulator_init_data tuna_vusim = {
 		.valid_modes_mask	= REGULATOR_MODE_NORMAL
 					| REGULATOR_MODE_STANDBY,
 		.valid_ops_mask	 	= REGULATOR_CHANGE_MODE
+#ifdef CONFIG_OMAP_REGULATOR_VOLTCHANGE
+					| REGULATOR_CHANGE_VOLTAGE
+#endif
 					| REGULATOR_CHANGE_STATUS,
 	},
 	.num_consumer_supplies = ARRAY_SIZE(tuna_vusim_supplies),
@@ -603,6 +612,9 @@ static struct regulator_init_data tuna_vana = {
 		.valid_modes_mask	= REGULATOR_MODE_NORMAL
 					| REGULATOR_MODE_STANDBY,
 		.valid_ops_mask	 = REGULATOR_CHANGE_MODE
+#ifdef CONFIG_OMAP_REGULATOR_VOLTCHANGE
+					| REGULATOR_CHANGE_VOLTAGE
+#endif
 					| REGULATOR_CHANGE_STATUS,
 		.always_on	= true,
 	},
@@ -620,6 +632,9 @@ static struct regulator_init_data tuna_vcxio = {
 		.valid_modes_mask	= REGULATOR_MODE_NORMAL
 					| REGULATOR_MODE_STANDBY,
 		.valid_ops_mask		= REGULATOR_CHANGE_MODE
+#ifdef CONFIG_OMAP_REGULATOR_VOLTCHANGE
+					| REGULATOR_CHANGE_VOLTAGE
+#endif
 					| REGULATOR_CHANGE_STATUS,
 	},
 	.num_consumer_supplies	= ARRAY_SIZE(tuna_vcxio_supply),
@@ -640,6 +655,9 @@ static struct regulator_init_data tuna_vdac = {
 		.valid_modes_mask	= REGULATOR_MODE_NORMAL
 					| REGULATOR_MODE_STANDBY,
 		.valid_ops_mask	 = REGULATOR_CHANGE_MODE
+#ifdef CONFIG_OMAP_REGULATOR_VOLTCHANGE
+					| REGULATOR_CHANGE_VOLTAGE
+#endif
 					| REGULATOR_CHANGE_STATUS,
 	},
 	.num_consumer_supplies	= ARRAY_SIZE(tuna_vdac_supply),
@@ -657,6 +675,9 @@ static struct regulator_init_data tuna_vusb = {
 		.valid_modes_mask	= REGULATOR_MODE_NORMAL
 					| REGULATOR_MODE_STANDBY,
 		.valid_ops_mask	 =	REGULATOR_CHANGE_MODE
+#ifdef CONFIG_OMAP_REGULATOR_VOLTCHANGE
+					| REGULATOR_CHANGE_VOLTAGE
+#endif
 					| REGULATOR_CHANGE_STATUS,
 		.state_mem = {
 			.disabled	= true,
@@ -725,6 +746,9 @@ static struct regulator_init_data tuna_v2v1 = {
 		.valid_modes_mask	= REGULATOR_MODE_NORMAL
 					| REGULATOR_MODE_STANDBY,
 		.valid_ops_mask		= REGULATOR_CHANGE_MODE
+#ifdef CONFIG_OMAP_REGULATOR_VOLTCHANGE
+					| REGULATOR_CHANGE_VOLTAGE
+#endif
 					| REGULATOR_CHANGE_STATUS,
 		.always_on		= true,
 	},
@@ -1293,8 +1317,7 @@ err_board_sysfs_create:
 err_soc_obj:
 	kobject_put(board_props_kobj);
 err_board_obj:
-	if (!board_props_kobj || !soc_kobj || ret)
-		pr_err("failed to create board_properties\n");
+	pr_err("failed to create board_properties\n");
 }
 
 #define HSMMC2_MUX	(OMAP_MUX_MODE1 | OMAP_PIN_INPUT_PULLUP)
@@ -1423,15 +1446,14 @@ static void __init tuna_reserve(void)
 	memblock_remove(PHYS_ADDR_DUCATI_MEM, PHYS_ADDR_DUCATI_SIZE);
 
 	for (i = 0; i < tuna_ion_data.nr; i++)
-		if (tuna_ion_data.heaps[i].type == ION_HEAP_TYPE_CARVEOUT ||
-		    tuna_ion_data.heaps[i].type == OMAP_ION_HEAP_TYPE_TILER) {
-			ret = memblock_remove(tuna_ion_data.heaps[i].base,
-					      tuna_ion_data.heaps[i].size);
-			if (ret)
-				pr_err("memblock remove of %x@%lx failed\n",
-				       tuna_ion_data.heaps[i].size,
-				       tuna_ion_data.heaps[i].base);
-		}
+	{
+		ret = memblock_remove(tuna_ion_data.heaps[i].base,
+				      tuna_ion_data.heaps[i].size);
+		if (ret)
+			pr_err("memblock remove of %x@%lx failed\n",
+				    tuna_ion_data.heaps[i].size,
+				    tuna_ion_data.heaps[i].base);
+	}
 
 	/* ipu needs to recognize secure input buffer area as well */
 	omap_ipu_set_static_mempool(PHYS_ADDR_DUCATI_MEM, PHYS_ADDR_DUCATI_SIZE +
