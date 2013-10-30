@@ -38,9 +38,6 @@
 #include <linux/slab.h>
 #include <linux/sysfs.h>
 #include <linux/types.h>
-#include <linux/module.h>
-#include <linux/moduleparam.h>
-
 
 #include <plat/common.h>
 #include <plat/omap-pm.h>
@@ -63,13 +60,10 @@ static void throttle_delayed_work_fn(struct work_struct *work);
 
 #define TSHUT_THRESHOLD_TSHUT_HOT	110000	/* 110 deg C */
 #define TSHUT_THRESHOLD_TSHUT_COLD	100000	/* 100 deg C */
-#define BGAP_THRESHOLD_T_HOT		75000	/* 75 deg C */
-#define BGAP_THRESHOLD_T_COLD		70000	/* 70 deg C */
+#define BGAP_THRESHOLD_T_HOT		64000	/* 64 deg C */
+#define BGAP_THRESHOLD_T_COLD		61000	/* 61 deg C */
 #define OMAP_ADC_START_VALUE	530
 #define OMAP_ADC_END_VALUE	923
-
-bool throttle_enabled = true;
-module_param(throttle_enabled, bool, 0755);
 
 /*
  * omap_temp_sensor structure
@@ -110,14 +104,6 @@ struct omap_temp_sensor_regs {
 
 static struct omap_temp_sensor_regs temp_sensor_context;
 static struct omap_temp_sensor *temp_sensor_pm;
-#endif
-
-#ifdef CONFIG_OMAP_TEMP_CONTROL
-struct omap_temp_sensor * ctrl_sensor;
-
-int temp_limit = BGAP_THRESHOLD_T_HOT;
-
-extern void tempcontrol_registerlimit(int templimit);
 #endif
 
 /*
@@ -228,13 +214,8 @@ static void omap_configure_temp_sensor_thresholds(struct omap_temp_sensor
 {
 	u32 temp = 0, t_hot, t_cold, tshut_hot, tshut_cold;
 
-#ifdef CONFIG_OMAP_TEMP_CONTROL
-	t_hot = temp_to_adc_conversion(temp_limit);
-	t_cold = temp_to_adc_conversion(temp_limit - (BGAP_THRESHOLD_T_HOT - BGAP_THRESHOLD_T_COLD));
-#else
 	t_hot = temp_to_adc_conversion(BGAP_THRESHOLD_T_HOT);
 	t_cold = temp_to_adc_conversion(BGAP_THRESHOLD_T_COLD);
-#endif
 
 	if ((t_hot == -EINVAL) || (t_cold == -EINVAL)) {
 		pr_err("%s:Temp thresholds out of bounds\n", __func__);
@@ -253,18 +234,6 @@ static void omap_configure_temp_sensor_thresholds(struct omap_temp_sensor
 			| (tshut_cold << OMAP4_TSHUT_COLD_SHIFT));
 	omap_temp_sensor_writel(temp_sensor, temp, BGAP_TSHUT_OFFSET);
 }
-
-#ifdef CONFIG_OMAP_TEMP_CONTROL
-void tempcontrol_update(int templimit)
-{
-    temp_limit = templimit;
-
-    omap_configure_temp_sensor_thresholds(ctrl_sensor);
-
-    return;
-}
-EXPORT_SYMBOL(tempcontrol_update);
-#endif
 
 static void omap_configure_temp_sensor_counter(struct omap_temp_sensor
 					       *temp_sensor, u32 counter)
@@ -421,17 +390,10 @@ static void throttle_delayed_work_fn(struct work_struct *work)
 					     throttle_work.work);
 	curr = omap_read_current_temp(temp_sensor);
 
-#ifdef CONFIG_OMAP_TEMP_CONTROL
-	if (curr >= temp_limit || curr < 0) {
-#else
 	if (curr >= BGAP_THRESHOLD_T_HOT || curr < 0) {
-#endif
-		if (throttle_enabled) {
-			omap_thermal_throttle();
-		} else {
-			pr_info("[franciscofranco] %p - OMAP temp read %d exceeds the threshold but throttling is disabled.",
-				__func__, curr);
-		}
+		pr_warn("%s: OMAP temp read %d exceeds the threshold\n",
+			__func__, curr);
+		omap_thermal_throttle();
 		schedule_delayed_work(&temp_sensor->throttle_work,
 			msecs_to_jiffies(THROTTLE_DELAY_MS));
 	} else {
@@ -469,24 +431,16 @@ static irqreturn_t omap_talert_irq_handler(int irq, void *data)
 	    & OMAP4_COLD_FLAG_MASK;
 	temp_offset = omap_temp_sensor_readl(temp_sensor, BGAP_CTRL_OFFSET);
 	if (t_hot) {
-		if (throttle_enabled) {
-			omap_thermal_throttle();
-			schedule_delayed_work(&temp_sensor->throttle_work,
-				msecs_to_jiffies(THROTTLE_DELAY_MS));
-			temp_offset &= ~(OMAP4_MASK_HOT_MASK);
-			temp_offset |= OMAP4_MASK_COLD_MASK;
-		} else {
-			pr_info("[vanir_info] %p - temperature is over the threshold, but throttling is disabled.", __func__);
-		}
+		omap_thermal_throttle();
+		schedule_delayed_work(&temp_sensor->throttle_work,
+			msecs_to_jiffies(THROTTLE_DELAY_MS));
+		temp_offset &= ~(OMAP4_MASK_HOT_MASK);
+		temp_offset |= OMAP4_MASK_COLD_MASK;
 	} else if (t_cold) {
-		if (throttle_enabled) {
-			cancel_delayed_work_sync(&temp_sensor->throttle_work);
-			omap_thermal_unthrottle();
-			temp_offset &= ~(OMAP4_MASK_COLD_MASK);
-			temp_offset |= OMAP4_MASK_HOT_MASK;
-		} else {
-			pr_info("[vanir_info] %p - temperature is below the threshold, but throttling is disabled.", __func__);
-		}
+		cancel_delayed_work_sync(&temp_sensor->throttle_work);
+		omap_thermal_unthrottle();
+		temp_offset &= ~(OMAP4_MASK_COLD_MASK);
+		temp_offset |= OMAP4_MASK_HOT_MASK;
 	}
 
 	omap_temp_sensor_writel(temp_sensor, temp_offset, BGAP_CTRL_OFFSET);
@@ -626,11 +580,6 @@ static int __devinit omap_temp_sensor_probe(struct platform_device *pdev)
 	dev_info(dev, "%s probed", pdata->name);
 
 	temp_sensor_pm = temp_sensor;
-
-#ifdef CONFIG_OMAP_TEMP_CONTROL
-	ctrl_sensor = temp_sensor;
-	tempcontrol_registerlimit(temp_limit);
-#endif
 
 	return 0;
 

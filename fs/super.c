@@ -179,7 +179,7 @@ void deactivate_locked_super(struct super_block *s)
 {
 	struct file_system_type *fs = s->s_type;
 	if (atomic_dec_and_test(&s->s_active)) {
-		cleancache_invalidate_fs(s);
+		cleancache_flush_fs(s);
 		fs->kill_sb(s);
 		/*
 		 * We need to call rcu_barrier so all the delayed rcu free
@@ -222,19 +222,19 @@ EXPORT_SYMBOL(deactivate_super);
  *	and want to turn it into a full-blown active reference.  grab_super()
  *	is called with sb_lock held and drops it.  Returns 1 in case of
  *	success, 0 if we had failed (superblock contents was already dead or
- *	dying when grab_super() had been called).  Note that this is only
- *	called for superblocks not in rundown mode (== ones still on ->fs_supers
- *	of their type), so increment of ->s_count is OK here.
+ *	dying when grab_super() had been called).
  */
 static int grab_super(struct super_block *s) __releases(sb_lock)
 {
-	s->s_count++;
-	spin_unlock(&sb_lock);
-	down_write(&s->s_umount);
-	if ((s->s_flags & MS_BORN) && atomic_inc_not_zero(&s->s_active)) {
-		put_super(s);
+	if (atomic_inc_not_zero(&s->s_active)) {
+		spin_unlock(&sb_lock);
 		return 1;
 	}
+	/* it's going away */
+	s->s_count++;
+	spin_unlock(&sb_lock);
+	/* wait for it to die */
+	down_write(&s->s_umount);
 	up_write(&s->s_umount);
 	put_super(s);
 	return 0;
@@ -245,11 +245,13 @@ static int grab_super(struct super_block *s) __releases(sb_lock)
  */
 void lock_super(struct super_block * sb)
 {
+	get_fs_excl();
 	mutex_lock(&sb->s_lock);
 }
 
 void unlock_super(struct super_block * sb)
 {
+	put_fs_excl();
 	mutex_unlock(&sb->s_lock);
 }
 
@@ -278,6 +280,7 @@ void generic_shutdown_super(struct super_block *sb)
 	if (sb->s_root) {
 		shrink_dcache_for_umount(sb);
 		sync_filesystem(sb);
+		get_fs_excl();
 		sb->s_flags &= ~MS_ACTIVE;
 
 		fsnotify_unmount_inodes(&sb->s_inodes);
@@ -292,6 +295,7 @@ void generic_shutdown_super(struct super_block *sb)
 			   "Self-destruct in 5 seconds.  Have a nice day...\n",
 			   sb->s_id);
 		}
+		put_fs_excl();
 	}
 	spin_lock(&sb_lock);
 	/* should be initialized for __put_super_and_need_restart() */
@@ -330,6 +334,11 @@ retry:
 				up_write(&s->s_umount);
 				destroy_super(s);
 				s = NULL;
+			}
+			down_write(&old->s_umount);
+			if (unlikely(!(old->s_flags & MS_BORN))) {
+				deactivate_locked_super(old);
+				goto retry;
 			}
 			return old;
 		}
@@ -503,10 +512,10 @@ restart:
 		if (list_empty(&sb->s_instances))
 			continue;
 		if (sb->s_bdev == bdev) {
-			if (!grab_super(sb))
+			if (grab_super(sb)) /* drops sb_lock */
+				return sb;
+			else
 				goto restart;
-			up_write(&sb->s_umount);
-			return sb;
 		}
 	}
 	spin_unlock(&sb_lock);

@@ -34,6 +34,7 @@
 #include <linux/mutex.h>
 #include <linux/switch.h>
 #include <linux/wakelock.h>
+
 #include <plat/usb.h>
 
 #include "mux.h"
@@ -97,11 +98,6 @@
 
 #define TWL_REG_CONTROLLER_STAT1	0x03
 #define TWL_STAT1_VBUS_DET		BIT(2)
-
-/*
- * KEF - 10/15/12:  Added in support of USB OTG charging (JourneymanMod Kernel).
- */
-static bool vbus_was_present = false;
 
 struct tuna_otg {
 	struct otg_transceiver		otg;
@@ -262,89 +258,26 @@ static void tuna_vusb_enable(struct tuna_otg *tuna_otg, bool enable)
 	}
 }
 
-/*
- *  KEF - 10/15/12:  Moved here for use in tuna_set_vbus_drive()
- *                   for JourneymanMod Kernel.
- */
-static bool tuna_otg_vbus_present(void)
-{
-	u8 vbus_state;
-
-	twl_i2c_read_u8(TWL_MODULE_MAIN_CHARGE, &vbus_state,
-				TWL_REG_CONTROLLER_STAT1);
-
-	return !!(vbus_state & TWL_STAT1_VBUS_DET);
-}
-
 static void tuna_set_vbus_drive(bool enable)
 {
-	struct tuna_otg *tuna_otg = &tuna_otg_xceiv;
-
-    /*
-     * KEF -  10/15/12:  Added code to original function such that if
-     *                   a voltage is detected on the bus (VBUS), rather
-     *                   than go to boost mode (VBUS Drive), we take
-     *                   power from the charger attached to the bus.
-     *                   Otherwise, we go into boost mode as in the
-     *                   original code.
-     *
-     *                   On disable, if we were powered by an external
-     *                   charger on VBUS, turn off this mode.  Otherwise,
-     *                   we were in boost mode, so disable that.
-     *
-     *                   The code for enabling and disabling charging was
-     *                   taken from tuna_otg_pogo_charger().  The original
-     *                   mod to comment out the boost code and enable
-     *                   external power while in OTG mode was found in the
-     *                   discussion thread
-     *
-     *                   http://rootzwiki.com/topic/30615-can-you-
-     *                              charge-usb-host-mode-simultaneously/
-     *
-     *                   Kernel based on this mod is called JourneymanMod
-     *                   kernel.
-     */
-
 	if (enable) {
-        if (tuna_otg_vbus_present()) {
-            vbus_was_present = true;
-		tuna_otg->otg.state = OTG_STATE_B_IDLE;
-	        tuna_otg->otg.default_a = false;
-	        tuna_otg->otg.last_event = USB_EVENT_CHARGER;
-	        atomic_notifier_call_chain(&tuna_otg->otg.notifier,
-						USB_EVENT_CHARGER,
-						tuna_otg->otg.gadget);
-        } // if 2
-        else {
-		    // Set the VBUS current limit to 500mA
-		    twl_i2c_write_u8(TWL_MODULE_MAIN_CHARGE, 0x09,
-				    CHARGERUSB_CINLIMIT);
+		/* Set the VBUS current limit to 500mA */
+		twl_i2c_write_u8(TWL_MODULE_MAIN_CHARGE, 0x09,
+				CHARGERUSB_CINLIMIT);
 
-		    // The TWL6030 has a feature to automatically turn on
-		    // boost mode (VBUS Drive) when the ID signal is not
-		    // grounded.  This feature needs to be disabled on Tuna
-		    // as the ID signal is not hooked up to the TWL6030.
-		    //
-		    twl_i2c_write_u8(TWL_MODULE_MAIN_CHARGE, 0x21,
-				    CHARGERUSB_CTRL3);
-		    twl_i2c_write_u8(TWL_MODULE_MAIN_CHARGE, 0x40,
-				    CHARGERUSB_CTRL1);
-        } // else 2
+		/* The TWL6030 has a feature to automatically turn on
+		 * boost mode (VBUS Drive) when the ID signal is not
+		 * grounded.  This feature needs to be disabled on Tuna
+		 * as the ID signal is not hooked up to the TWL6030.
+		 */
+		twl_i2c_write_u8(TWL_MODULE_MAIN_CHARGE, 0x21,
+				CHARGERUSB_CTRL3);
+		twl_i2c_write_u8(TWL_MODULE_MAIN_CHARGE, 0x40,
+				CHARGERUSB_CTRL1);
 	} else {
-        if (vbus_was_present) {
-            vbus_was_present = false;
-		tuna_otg->otg.state = OTG_STATE_B_IDLE;
-	        tuna_otg->otg.default_a = false;
-	        tuna_otg->otg.last_event = USB_EVENT_NONE;
-	        atomic_notifier_call_chain(&tuna_otg->otg.notifier,
-						USB_EVENT_NONE,
-						tuna_otg->otg.gadget);
-        } // if 2
-        else {
-	        twl_i2c_write_u8(TWL_MODULE_MAIN_CHARGE, 0x01,
-			        CHARGERUSB_CTRL3);
-	        twl_i2c_write_u8(TWL_MODULE_MAIN_CHARGE, 0, CHARGERUSB_CTRL1);
-        } // else 2
+		twl_i2c_write_u8(TWL_MODULE_MAIN_CHARGE, 0x01,
+				CHARGERUSB_CTRL3);
+		twl_i2c_write_u8(TWL_MODULE_MAIN_CHARGE, 0, CHARGERUSB_CTRL1);
 	}
 }
 
@@ -461,7 +394,6 @@ static void tuna_otg_unmask_vbus_irq(void)
 				REG_INT_MSK_STS_C);
 }
 
-/*
 static bool tuna_otg_vbus_present(void)
 {
 	u8 vbus_state;
@@ -471,7 +403,6 @@ static bool tuna_otg_vbus_present(void)
 
 	return !!(vbus_state & TWL_STAT1_VBUS_DET);
 }
-*/
 
 static void tuna_fsa_usb_detected(int device)
 {
@@ -872,7 +803,7 @@ static void sii9234_connect(bool on, u8 *devcap)
 				(devcap[MHL_DEVCAP_DEVICE_ID_H] << 8) |
 				devcap[MHL_DEVCAP_DEVICE_ID_L];
 
-			if (adopter_id == 0x3333) {
+			if (adopter_id == 0x3333 || adopter_id == 321) {
 				if (devcap[MHL_DEVCAP_RESERVED] == 2)
 					val = USB_EVENT_CHARGER;
 
