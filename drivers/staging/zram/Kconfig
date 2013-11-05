@@ -1,14 +1,11 @@
 config ZRAM
 	tristate "Compressed RAM block device support"
-<<<<<<< HEAD
 	depends on BLOCK && SYSFS && ZSMALLOC && CRYPTO=y
 	select CRYPTO_LZO
-=======
 	depends on BLOCK && SYSFS
 	select XVMALLOC
 	select SNAPPY_COMPRESS
 	select SNAPPY_DECOMPRESS
->>>>>>> 1dfbf84... Implemented Google's snappy compression / decompression
 	default n
 	help
 	  Creates virtual block devices called /dev/zramX (X = 0, 1, ...).
