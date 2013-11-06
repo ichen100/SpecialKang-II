@@ -839,7 +839,7 @@ static ssize_t show_input_boost_freq(struct kobject *kobj, struct attribute *att
   return sprintf(buf, "%d\n", input_boost_freq);
 }
 
-+static ssize_t store_input_boost_freq(struct kobject *kobj, struct attribute *attr,
+static ssize_t store_input_boost_freq(struct kobject *kobj, struct attribute *attr,
                                       const char *buf, size_t count)
 {
   int ret;
